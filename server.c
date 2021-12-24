@@ -58,7 +58,7 @@ char * conv_addr (struct sockaddr_in address)
 	return (str);
 }
 
-static void* treat(void* arg);
+static void* treat(void* arg); //functia pentru thread
 int handle_command(int user_fd); // se ocupa de comanda primita
 void send_help(); // trimite o lista care contine comenzile disponibile utilizatorului
 void register_user(int user_fd, char usersame[1024]); // este inregistrat un utilizator
@@ -154,7 +154,7 @@ int handle_command(int user_fd)
 
 	if(bytes <= 0)
 	{
-		printf ("[server] Client with file decriptor %d disconnected.\n", user_fd);
+		printf ("[server][%d][%ld] Client with file decriptor %d disconnected.\n", user_fd, pthread_self(), user_fd);
 		close(user_fd);
 		logout_user(user_fd);
 		return 0;
@@ -167,7 +167,7 @@ int handle_command(int user_fd)
 		i--;
 	}
 
-	printf("[server] Message received : %s\n", MESSAGE);
+	printf("[server][%d][%ld] Message received : %s\n", user_fd, pthread_self(), MESSAGE);
 
 	if((strcmp(MESSAGE, "help") == 0) && strlen(MESSAGE) == 4)
 	{
@@ -339,7 +339,7 @@ void display_users()
 	{
 		for(int i = 1; i <= user_count; i++)
 		{
-			printf("[server]%s %d\n", users[i].username, users[i].user_fd);
+			printf("[server][%d][%ld]%s\n", users[i].user_fd, pthread_self(), users[i].username);
 			if(i == user_count)
 			{
 				if(users[i].logged == 1)
@@ -377,6 +377,7 @@ void logout_user(int user_fd)
 			{
 				users[i].logged = 0;
 				ok = 1;
+				printf("[server][%d][%ld] User logged out\n", user_fd, pthread_self());
 				strcat(RESPONSE, MSG_LOGGED_OUT);
 			}
 		}
@@ -415,24 +416,28 @@ void delete_user(int user_fd)
 			users[i] = users[i+1];
 		}
 		user_count-- ;
+		printf("[server][%d][%ld] User deleted\n", user_fd, pthread_self());
 	}
 }
 
 void send_message(int user_fd, char username[40], char MESSAGE[1024])
 {
-	int ok = 0, i, fd, ok_logged = 1;
-	char sender[40], message[256];
+	int ok = 0, i, destination_fd, ok_logged = 0;
+	char sender[40], message[1024];
 	bzero(sender, 40);
-	for(i = 1; i <= user_count && ok_logged; i++)
+	for(i = 1; i <= user_count && !ok_logged; i++)
 	{
 		if(user_fd == users[i].user_fd)
 		{
-			if(users[i].logged == 0)
+			if(users[i].logged == 1)
+			{
+				ok_logged = 1;
+			    strcat(sender, users[i].username);
+			}
+			else
 			{
 				strcat(RESPONSE, MSG_NOT_LOGGED);
-				ok_logged = 0;
 			}
-			strcat(sender, users[i].username);
 		}
 	}
 	for(i = 1; i <= user_count && !ok; i++)
@@ -446,10 +451,10 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 	{
 		if(ok == 1)
 		{
-			fd = users[i - 1].user_fd;
-			if(fd != user_fd)
+			destination_fd = users[i - 1].user_fd;
+			if(destination_fd != user_fd)
 			{
-				if(users[i-1].logged == 1)
+				if(users[i - 1].logged == 1)
 				{
 					time_t message_time_date;
 					int hour, minute, second;
@@ -459,12 +464,15 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 					hour = message_time->tm_hour;         
 					minute = message_time->tm_min;        
 					second = message_time->tm_sec;
+					char time[1024];
+					bzero(time, 1024);
+					strcpy(time, ctime(&message_time_date));
+					time[strlen(time) - 1] = '\0';
 
-
-					printf("[server][%s]from %d to %d message %s\n", ctime(&message_time_date), user_fd, fd, MESSAGE);
-					bzero(message, 256);
+					printf("[server][%d][%ld][%s]from %d to %d message %s\n", user_fd, pthread_self(), time, user_fd, destination_fd, MESSAGE);
+					bzero(message, 1024);
 					sprintf(message,"\e[0;105m[%s]\e[0m[%d:%d:%d] %s", sender, hour, minute, second, MESSAGE);
-					write(fd, message, strlen(message));
+					write(destination_fd, message, strlen(message));
 					strcat(RESPONSE, MSG_SENT);
 				}
 				else
@@ -481,5 +489,9 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 		{
 			strcat(RESPONSE, MSG_BAD_USERNAME);
 		}
+	}
+	else
+	{
+		strcat(RESPONSE, MSG_NO_USER);
 	}
 }
