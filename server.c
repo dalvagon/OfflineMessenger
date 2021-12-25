@@ -28,7 +28,8 @@
 #define MSG_DELETED "   User has been deleted!"
 #define MSG_SENT "   Message was sent"
 #define MSG_SELF_MESSAGE "   You can't send a message to yourself"
-
+#define MSG_NO_HISTORY "   You don't have a conversation history with this user"
+#define MSG_SELF_HISTORY "   You don't have a conversation history with this yourself"
 extern int errno;	
 
 struct user
@@ -36,28 +37,14 @@ struct user
 	char username[40];
 	int user_fd, logged, user_tid;
 }users[100];
-
 char MESSAGE[1024], RESPONSE[1024];
 struct sockaddr_in server, from;				
-int sd, client,  optval = 1, len, bytes, user_count;	
+int sd, client,  optval = 1, len, bytes, user_count, tid_count = 0;	
 FILE* file_help;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_t user_tid[100];
-int tid_count = 0;
 
-
-char * conv_addr (struct sockaddr_in address)
-{
-	static char str[25];
-	char port[7];
-
-	strcpy (str, inet_ntoa (address.sin_addr));	
-	bzero (port, 7);
-	sprintf (port, ":%d", ntohs (address.sin_port));	
-	strcat (str, port);
-	return (str);
-}
-
+char * conv_addr (struct sockaddr_in address);
 static void* treat(void* arg); //functia pentru thread
 int handle_command(int user_fd); // se ocupa de comanda primita
 void send_help(); // trimite o lista care contine comenzile disponibile utilizatorului
@@ -67,6 +54,7 @@ void login_user(int user_fd,char username[1024]); // este logat un utliziator
 void logout_user(int user_fd); // utlizatorul curent este delogat
 void delete_user(int user_fd); // utilizatorul curent este este sters de pe server
 void send_message(int user_fd, char username[40], char MESSAGE[1024]);
+void history_with(int user_fd, char username[40]);
 
 int main ()
 {		
@@ -95,7 +83,6 @@ int main ()
 		perror ("[server] Error at listen().\n");
 		return errno;
 	}
-
 
 	printf ("[server] Waiting at port %d...\n", PORT);
 	fflush (stdout);
@@ -143,7 +130,6 @@ static void* treat(void* arg)
 
 int handle_command(int user_fd)
 {
-	
 	bzero(RESPONSE, 1024);
 	bzero(MESSAGE, 1024);
 	if((bytes = read(user_fd, MESSAGE, sizeof(MESSAGE))) <= 0) 
@@ -201,7 +187,7 @@ int handle_command(int user_fd)
 	else
 	if(strstr(MESSAGE, "send to") - MESSAGE == 0)
 	{
-		char username[1024];
+		char username[40];
 		strcpy(username, MESSAGE + 8);
 		int i = 0;
 		while(username[i] != ' ')
@@ -210,6 +196,19 @@ int handle_command(int user_fd)
 		}
 		strcpy(username + i, "\0");
 		send_message(user_fd, username, MESSAGE + 8 + i);
+	}
+	else
+	if(strstr(MESSAGE, "history with") - MESSAGE == 0)
+	{
+		char username[40];
+		strcpy(username, MESSAGE + 13);
+		int i = 0;
+		while(username[i] != ' ')
+		{
+			i++;
+		}
+		strcpy(username + i, "\0");
+		history_with(user_fd, username);
 	}
 	else
 	{
@@ -276,7 +275,7 @@ void register_user(int user_fd, char username[1024])
 				bzero(users[user_count].username, 40);
 				strcpy(users[user_count].username, username);
 				users[user_count].logged = 0;
-				sprintf(RESPONSE, "   User %s was registered!", users[user_count].username);
+				sprintf(RESPONSE, "   User \e[1;91m%s \e[1;97mwas registered!", users[user_count].username);
 				RESPONSE[strlen(RESPONSE)] = '\0';	
 			}
 			else
@@ -318,7 +317,7 @@ void login_user(int user_fd, char username[1024])
 					{
 						users[i].logged = 1;
 						users[i].user_fd = user_fd;
-						sprintf(RESPONSE, "%s \e[32m%s\e[0m", MSG_USER_LOGGED_IN, users[i].username);
+						sprintf(RESPONSE, "%s \e[0;92m%s\e[1;97m", MSG_USER_LOGGED_IN, users[i].username);
 					}
 				}
 		}
@@ -344,22 +343,22 @@ void display_users()
 			{
 				if(users[i].logged == 1)
 				{
-					sprintf(RESPONSE + strlen(RESPONSE),"   \e[32m%s\e[0m", users[i].username);
+					sprintf(RESPONSE + strlen(RESPONSE),"   \e[0;92m%s\e[0m", users[i].username);
 				}
 				else
 				{
-					sprintf(RESPONSE + strlen(RESPONSE),"   \e[33m%s\e[0m", users[i].username);
+					sprintf(RESPONSE + strlen(RESPONSE),"   \e[0;91m%s\e[0m", users[i].username);
 				}
 			}
 			else
 			{
 				if(users[i].logged == 1)
 				{
-					sprintf(RESPONSE + strlen(RESPONSE),"   \e[32m%s\n\e[0m", users[i].username);
+					sprintf(RESPONSE + strlen(RESPONSE),"   \e[0;92m%s\n\e[0m", users[i].username);
 				}
 				else
 				{
-					sprintf(RESPONSE + strlen(RESPONSE),"   \e[33m%s\n\e[0m", users[i].username);
+					sprintf(RESPONSE + strlen(RESPONSE),"   \e[0;91m%s\n\e[0m", users[i].username);
 				}
 			}
 		}
@@ -411,6 +410,19 @@ void delete_user(int user_fd)
 	}
 	else
 	{
+		for(int i = 1; i <= user_count; i++)
+		{
+			char path[40];
+			bzero(path, 40);
+			if(users[index].user_fd < users[i].user_fd)
+				sprintf(path, "h%dwith%d", users[index].user_fd, users[i].user_fd);
+			else
+				sprintf(path, "h%dwith%d", users[i].user_fd, users[index].user_fd);
+			if(access(path, F_OK) != -1)
+			{
+				remove(path);
+			}
+		}
 		for(int i = index; i < user_count; i++)
 		{
 			users[i] = users[i+1];
@@ -434,50 +446,56 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 				ok_logged = 1;
 			    strcat(sender, users[i].username);
 			}
-			else
+		}
+	}
+
+	if(ok_logged == 1)
+	{ 
+		for(i = 1; i <= user_count && !ok; i++)
+		{
+			if(strcmp(username, users[i].username) == 0)
 			{
-				strcat(RESPONSE, MSG_NOT_LOGGED);
+				ok = 1;
 			}
 		}
-	}
-	for(i = 1; i <= user_count && !ok; i++)
-	{
-		if(strcmp(username, users[i].username) == 0)
-		{
-			ok = 1;
-		}
-	}
-	if(ok_logged == 1)
-	{
 		if(ok == 1)
 		{
 			destination_fd = users[i - 1].user_fd;
 			if(destination_fd != user_fd)
 			{
+				char path_history_with[40];
+				bzero(path_history_with, 40);
+				FILE* file_path_history_with;
+				if(user_fd < destination_fd)
+					sprintf(path_history_with, "h%dwith%d", user_fd, destination_fd);
+				else
+					sprintf(path_history_with, "h%dwith%d", destination_fd, user_fd);
+
+				file_path_history_with = fopen(path_history_with, "a");
+			
+				time_t message_time_date;
+				int hour, minute, second;
+				time(&message_time_date);
+				struct tm *message_time = localtime(&message_time_date);
+
+				hour = message_time->tm_hour;         
+				minute = message_time->tm_min;        
+				second = message_time->tm_sec;
+				char time[1024];
+				bzero(time, 1024);
+				strcpy(time, ctime(&message_time_date));
+				time[strlen(time) - 1] = '\0';
+
+				printf("[server][%d][%ld][%s]from %d to %d message %s\n", user_fd, pthread_self(), time, user_fd, destination_fd, MESSAGE);
+				bzero(message, 1024);
+				sprintf(message,"\e[47m[%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m", sender, hour, minute, second, MESSAGE);
+				fprintf(file_path_history_with, "[%s][%d:%d:%d]%s\n", sender, hour, minute, second, MESSAGE);
+				strcat(RESPONSE, MSG_SENT);
+				fclose(file_path_history_with);
+				
 				if(users[i - 1].logged == 1)
 				{
-					time_t message_time_date;
-					int hour, minute, second;
-					time(&message_time_date);
-					struct tm *message_time = localtime(&message_time_date);
- 
-					hour = message_time->tm_hour;         
-					minute = message_time->tm_min;        
-					second = message_time->tm_sec;
-					char time[1024];
-					bzero(time, 1024);
-					strcpy(time, ctime(&message_time_date));
-					time[strlen(time) - 1] = '\0';
-
-					printf("[server][%d][%ld][%s]from %d to %d message %s\n", user_fd, pthread_self(), time, user_fd, destination_fd, MESSAGE);
-					bzero(message, 1024);
-					sprintf(message,"\e[0;105m[%s]\e[0m[%d:%d:%d] %s", sender, hour, minute, second, MESSAGE);
 					write(destination_fd, message, strlen(message));
-					strcat(RESPONSE, MSG_SENT);
-				}
-				else
-				{
-					strcat(RESPONSE, "   User offline");
 				}
 			}
 			else
@@ -492,6 +510,86 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 	}
 	else
 	{
-		strcat(RESPONSE, MSG_NO_USER);
+		strcat(RESPONSE, MSG_NOT_LOGGED);
 	}
+}
+
+void history_with(int user_fd, char username[40])
+{
+	int ok = 0, i, with_fd, ok_logged = 0;
+	for(i = 1; i <= user_count && !ok_logged; i++)
+	{
+		if(user_fd == users[i].user_fd)
+		{
+			if(users[i].logged == 1)
+			{
+				ok_logged = 1;
+			}
+		}
+	}
+	
+	if(ok_logged == 1)
+	{
+		for(i = 1; i <= user_count && !ok; i++)
+		{
+			if(strcmp(username, users[i].username) == 0)
+			{
+				ok = 1;
+			}
+		}
+		if(ok == 1)
+		{
+			with_fd = users[i - 1].user_fd;
+			if(with_fd != user_fd)
+			{
+				printf("[server]");
+				char path_history_with[40];
+				bzero(path_history_with, 40);
+				FILE* file_path_history_with;
+				if(user_fd < with_fd)
+					sprintf(path_history_with, "h%dwith%d", user_fd, with_fd);
+				else
+					sprintf(path_history_with, "h%dwith%d", with_fd, user_fd);
+				if(access(path_history_with, F_OK) != -1)
+				{
+					file_path_history_with = fopen(path_history_with, "r");
+					char message[1024];
+					while(fgets(message, sizeof(message), file_path_history_with) != NULL)
+					{
+						write(user_fd, message, strlen(message));
+					}
+					fclose(file_path_history_with);
+					strcat(RESPONSE, "?+?+?+?+?+?+?+?+?+?+");
+				}
+				else
+				{
+					strcat(RESPONSE, MSG_NO_HISTORY);
+				}
+			}
+			else
+			{
+				strcat(RESPONSE, MSG_SELF_HISTORY);
+			}
+		}
+		else
+		{
+			strcat(RESPONSE, MSG_BAD_USERNAME);
+		}
+	}
+	else
+	{
+		strcat(RESPONSE, MSG_NOT_LOGGED);
+	}
+}
+
+char * conv_addr (struct sockaddr_in address)
+{
+	static char str[25];
+	char port[7];
+
+	strcpy (str, inet_ntoa (address.sin_addr));	
+	bzero (port, 7);
+	sprintf (port, ":%d", ntohs (address.sin_port));	
+	strcat (str, port);
+	return (str);
 }

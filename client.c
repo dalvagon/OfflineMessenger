@@ -75,11 +75,11 @@ int main (int argc, char *argv[])
 
 	if(logged == 0)
 	{
-		printf ("\n[client]Command: ");
+		printf ("\n\e[1;95m>\e[0m   ");
 	}
 	else
 	{
-		printf("\n[%s] ", username);
+		printf("\n\e[42m[%s]\e[0;90m>\e[0m   ", username);
 	}
 	fflush (stdout);
 
@@ -123,7 +123,7 @@ int main (int argc, char *argv[])
 						bytes = read(sd, RESPONSE, 1024);
 						if(bytes > 1)
 						{
-							printf("%s", RESPONSE);
+							printf("\e[1;97m%s\e[0m", RESPONSE);
 							
 							if(strstr(RESPONSE, MSG_USER_LOGGED_IN) - RESPONSE == 0)
 							{
@@ -137,12 +137,13 @@ int main (int argc, char *argv[])
 							}
 							if(logged == 0)
 							{
-								printf ("\n[client]Command: ");
+								printf ("\n\e[1;95m>\e[0m   ");
 							}
 							else
 							{
-								printf("\n[%s] ", username);
+								printf("\n[\e[0;92m%s\e[0m]\e[1;95m>\e[0m   ", username);
 							}
+						
 							fflush(stdout);
 						}
 						if(RESPONSE[bytes] == '\0')
