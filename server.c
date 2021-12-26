@@ -12,7 +12,8 @@
 #include <time.h>
 #include <stdio.h>
 #include <pthread.h>
-
+#include <signal.h>
+#include <stdlib.h>
 #define PORT 2728
 
 #define MSG_WELCOME "   You have been connected! Type help for list of commands."
@@ -45,6 +46,7 @@ pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_t user_tid[100];
 
 char * conv_addr (struct sockaddr_in address);
+void signal_handle(int sgn);
 static void* treat(void* arg); //functia pentru thread
 int handle_command(int user_fd); // se ocupa de comanda primita
 void send_help(); // trimite o lista care contine comenzile disponibile utilizatorului
@@ -57,42 +59,35 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024]);
 void history_with(int user_fd, char username[40]);
 
 int main ()
-{		
-
+{	
+	signal(SIGINT, signal_handle);	
 	if ((sd = socket (AF_INET, SOCK_STREAM, 0)) == -1)
 	{
 		perror ("[server] Error at socket().\n");
 		return errno;
 	}
-
 	setsockopt(sd, SOL_SOCKET, SO_REUSEADDR,&optval,sizeof(optval));
 	bzero (&server, sizeof (server));
-
 	server.sin_family = AF_INET;
 	server.sin_addr.s_addr = htonl (INADDR_ANY);
 	server.sin_port = htons (PORT);
-
 	if (bind (sd, (struct sockaddr *) &server, sizeof (struct sockaddr)) == -1)
 	{
 		perror ("[server] Error at bind().\n");
 		return errno;
 	}
-
 	if (listen (sd, 5) == -1)
 	{
 		perror ("[server] Error at listen().\n");
 		return errno;
 	}
-
 	printf ("[server] Waiting at port %d...\n", PORT);
 	fflush (stdout);
 	while (1)
 	{
 		len = sizeof (from);
 		bzero (&from, sizeof (from));
-
 		client = accept (sd, (struct sockaddr *) &from, &len);
-
 		if (client < 0)
 		{
 			perror ("[server] Error at accept().\n");
@@ -110,7 +105,7 @@ int main ()
 			perror("[server] Error ar pthread_create().\n");
 			continue;
 		}		
-	}	
+	}
 }			
 
 static void* treat(void* arg)
@@ -185,12 +180,13 @@ int handle_command(int user_fd)
 		delete_user(user_fd);
 	}
 	else
-	if(strstr(MESSAGE, "send to") - MESSAGE == 0)
+	if(strstr(MESSAGE, "send to ") - MESSAGE == 0)
 	{
 		char username[40];
+		if(strlen(MESSAGE ))
 		strcpy(username, MESSAGE + 8);
 		int i = 0;
-		while(username[i] != ' ')
+		while(username[i] != ' ' && username[i] != '\0')
 		{
 			i++;
 		}
@@ -198,16 +194,11 @@ int handle_command(int user_fd)
 		send_message(user_fd, username, MESSAGE + 8 + i);
 	}
 	else
-	if(strstr(MESSAGE, "history with") - MESSAGE == 0)
+	if(strstr(MESSAGE, "history with ") - MESSAGE == 0)
 	{
 		char username[40];
 		strcpy(username, MESSAGE + 13);
-		int i = 0;
-		while(username[i] != ' ')
-		{
-			i++;
-		}
-		strcpy(username + i, "\0");
+		printf("[server]%s\n", username);
 		history_with(user_fd, username);
 	}
 	else
@@ -216,10 +207,13 @@ int handle_command(int user_fd)
 		RESPONSE[strlen(RESPONSE)] = '\0';
 	}
 
-	if((write(user_fd, RESPONSE, strlen(RESPONSE)) <= 0))
+	if(strlen(RESPONSE) > 1)
 	{
-		perror("Error at write\n");
-		return 0;
+		if((write(user_fd, RESPONSE, strlen(RESPONSE)) <= 0))
+		{
+			perror("Error at write\n");
+			return 0;
+		}
 	}
 	return 1;
 }
@@ -375,6 +369,7 @@ void logout_user(int user_fd)
 			if(users[i].logged == 1)
 			{
 				users[i].logged = 0;
+				users[i].user_fd = 0;
 				ok = 1;
 				printf("[server][%d][%ld] User logged out\n", user_fd, pthread_self());
 				strcat(RESPONSE, MSG_LOGGED_OUT);
@@ -412,12 +407,12 @@ void delete_user(int user_fd)
 	{
 		for(int i = 1; i <= user_count; i++)
 		{
-			char path[40];
-			bzero(path, 40);
-			if(users[index].user_fd < users[i].user_fd)
-				sprintf(path, "h%dwith%d", users[index].user_fd, users[i].user_fd);
+			char path[80];
+			bzero(path, 80);
+			if(strcmp(users[index].username, users[i].username) < 0)
+				sprintf(path, "%s%s", users[index].username, users[i].username);
 			else
-				sprintf(path, "h%dwith%d", users[i].user_fd, users[index].user_fd);
+				sprintf(path, "%s%s", users[i].username, users[index].username);
 			if(access(path, F_OK) != -1)
 			{
 				remove(path);
@@ -463,13 +458,13 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 			destination_fd = users[i - 1].user_fd;
 			if(destination_fd != user_fd)
 			{
-				char path_history_with[40];
-				bzero(path_history_with, 40);
+				char path_history_with[80];
+				bzero(path_history_with, 80);
 				FILE* file_path_history_with;
-				if(user_fd < destination_fd)
-					sprintf(path_history_with, "h%dwith%d", user_fd, destination_fd);
+				if(strcmp(sender, username) < 0)
+					sprintf(path_history_with, "%s%s", sender, username);
 				else
-					sprintf(path_history_with, "h%dwith%d", destination_fd, user_fd);
+					sprintf(path_history_with, "%s%s", username, sender);
 
 				file_path_history_with = fopen(path_history_with, "a");
 			
@@ -516,7 +511,9 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 
 void history_with(int user_fd, char username[40])
 {
-	int ok = 0, i, with_fd, ok_logged = 0;
+	int ok = 0, i, ok_logged = 0, with_fd;
+	char sender[40];
+	bzero(sender, 40);
 	for(i = 1; i <= user_count && !ok_logged; i++)
 	{
 		if(user_fd == users[i].user_fd)
@@ -524,6 +521,8 @@ void history_with(int user_fd, char username[40])
 			if(users[i].logged == 1)
 			{
 				ok_logged = 1;
+				strcat(sender, users[i].username);
+				printf("[server]logged\n");
 			}
 		}
 	}
@@ -535,6 +534,7 @@ void history_with(int user_fd, char username[40])
 			if(strcmp(username, users[i].username) == 0)
 			{
 				ok = 1;
+				printf("[server]username ok\n");
 			}
 		}
 		if(ok == 1)
@@ -542,27 +542,27 @@ void history_with(int user_fd, char username[40])
 			with_fd = users[i - 1].user_fd;
 			if(with_fd != user_fd)
 			{
-				printf("[server]");
-				char path_history_with[40];
-				bzero(path_history_with, 40);
+				printf("[server]history\n");
+				char path_history_with[80];
+				bzero(path_history_with, 80);
 				FILE* file_path_history_with;
-				if(user_fd < with_fd)
-					sprintf(path_history_with, "h%dwith%d", user_fd, with_fd);
+				if(strcmp(sender, username) < 0)
+					sprintf(path_history_with, "%s%s", sender, username);
 				else
-					sprintf(path_history_with, "h%dwith%d", with_fd, user_fd);
-				if(access(path_history_with, F_OK) != -1)
+					sprintf(path_history_with, "%s%s", username, sender);
+				printf("[server]%s", path_history_with);
+				if((file_path_history_with = fopen(path_history_with, "r")) != NULL)
 				{
-					file_path_history_with = fopen(path_history_with, "r");
 					char message[1024];
 					while(fgets(message, sizeof(message), file_path_history_with) != NULL)
 					{
 						write(user_fd, message, strlen(message));
 					}
 					fclose(file_path_history_with);
-					strcat(RESPONSE, "?+?+?+?+?+?+?+?+?+?+");
 				}
 				else
 				{
+					perror("Error at fopen\n");
 					strcat(RESPONSE, MSG_NO_HISTORY);
 				}
 			}
@@ -592,4 +592,14 @@ char * conv_addr (struct sockaddr_in address)
 	sprintf (port, ":%d", ntohs (address.sin_port));	
 	strcat (str, port);
 	return (str);
+}
+
+void signal_handle(int sgn)
+{
+	printf("[SERVER]EXIT");
+	for(int i = 1 ; i <= user_count; i++)
+	{
+		delete_user(users[i].user_fd);
+	}
+	exit(0);
 }
