@@ -31,12 +31,14 @@
 #define MSG_SELF_MESSAGE "   You can't send a message to yourself"
 #define MSG_NO_HISTORY "   You don't have a conversation history with this user"
 #define MSG_SELF_HISTORY "   You don't have a conversation history with this yourself"
+#define MSG_NEW_MSG "   You have new messages:"
+
 extern int errno;	
 
 struct user
 {
 	char username[40];
-	int user_fd, logged, user_tid;
+	int user_fd, logged, user_tid, message_id;
 }users[100];
 char MESSAGE[1024], RESPONSE[1024];
 struct sockaddr_in server, from;				
@@ -48,6 +50,7 @@ pthread_t user_tid[100];
 char * conv_addr (struct sockaddr_in address);
 void signal_handle(int sgn);
 static void* treat(void* arg); //functia pentru thread
+int f_zero(int x);
 int handle_command(int user_fd); // se ocupa de comanda primita
 void send_help(); // trimite o lista care contine comenzile disponibile utilizatorului
 void register_user(int user_fd, char usersame[1024]); // este inregistrat un utilizator
@@ -57,6 +60,7 @@ void logout_user(int user_fd); // utlizatorul curent este delogat
 void delete_user(int user_fd); // utilizatorul curent este este sters de pe server
 void send_message(int user_fd, char username[40], char MESSAGE[1024]);
 void history_with(int user_fd, char username[40]);
+
 
 int main ()
 {	
@@ -222,11 +226,13 @@ void send_help()
 {
 	char text[1024];
 	file_help = fopen("help.txt", "r"); 
+	pthread_mutex_lock(&lock);
 	while(fgets(text, sizeof(text), file_help) != NULL) 
 	{
 		strcat(RESPONSE, "   ");
 		strcat(RESPONSE, text);
 	}
+	pthread_mutex_unlock(&lock);
 	RESPONSE[strlen(RESPONSE)] = '\0';
 	printf("[server - r]\n%s\n", RESPONSE);
 
@@ -263,12 +269,14 @@ void register_user(int user_fd, char username[1024])
 		
 		if(ok == 1)
 		{
+			pthread_mutex_lock(&lock);
 			if(strlen(username) > 0)
 			{
 				user_count++;
 				bzero(users[user_count].username, 40);
 				strcpy(users[user_count].username, username);
 				users[user_count].logged = 0;
+				users[user_count].message_id = 0;
 				sprintf(RESPONSE, "   User \e[1;91m%s \e[1;97mwas registered!", users[user_count].username);
 				RESPONSE[strlen(RESPONSE)] = '\0';	
 			}
@@ -276,6 +284,7 @@ void register_user(int user_fd, char username[1024])
 			{
 				strcat(RESPONSE, "   Enter an username!");
 			}
+			pthread_mutex_unlock(&lock);
 		}
 	}
 }
@@ -283,38 +292,59 @@ void register_user(int user_fd, char username[1024])
 void login_user(int user_fd, char username[1024])
 {
 	int ok = 0;
-	if(user_count < 1)
+	for(int i = 1; i <= user_count && !ok; i++)
 	{
-		strcat(RESPONSE, MSG_NO_USER);
+		if(user_fd == users[i].user_fd && users[i].logged == 1)
+		{
+			strcat(RESPONSE,  MSG_USER_ALREADY_LOGGED_IN);
+			ok = 1;
+		}
 	}
-	else
+	if(ok == 0)
 	{
 		for(int i = 1; i <= user_count && !ok; i++)
-		{
-			if(user_fd == users[i].user_fd && users[i].logged == 1)
+			if(strcmp(username, users[i].username) == 0)
 			{
-				strcat(RESPONSE,  MSG_USER_ALREADY_LOGGED_IN);
 				ok = 1;
-			}
-		}
-		if(ok == 0)
-		{
-			for(int i = 1; i <= user_count && !ok; i++)
-				if(strcmp(username, users[i].username) == 0)
+				if(users[i].logged == 1)
 				{
-					ok = 1;
-					if(users[i].logged == 1)
+					strcat(RESPONSE, MSG_USER_ALREADY_LOGGED_IN);
+				}
+				else
+				{
+					char path_q[80], message[1024];
+					bzero(path_q, 80);
+					FILE* file_path_q;
+					users[i].logged = 1;
+					users[i].user_fd = user_fd;
+					printf("[server]User %s was logged in\n", username);
+					
+					sprintf(path_q, "q%s", username);
+					if(access(path_q, R_OK) == 0)
 					{
-						strcat(RESPONSE, MSG_USER_ALREADY_LOGGED_IN);
+						if((file_path_q = fopen(path_q, "r")) != NULL)
+						{
+							sprintf(RESPONSE, "%s \e[0;92m%s\n\e[1;97m", MSG_USER_LOGGED_IN, users[i].username);
+							write(user_fd, MSG_NEW_MSG, strlen(MSG_NEW_MSG));
+							while(fgets(message, sizeof(message), file_path_q) != NULL)
+							{
+								write(user_fd, message, strlen(message));
+							}
+						}
+						else
+						{
+							perror("Error at fopen\n");
+						}
+						fclose(file_path_q);
+						remove(path_q);
 					}
 					else
 					{
-						users[i].logged = 1;
-						users[i].user_fd = user_fd;
 						sprintf(RESPONSE, "%s \e[0;92m%s\e[1;97m", MSG_USER_LOGGED_IN, users[i].username);
 					}
+					
 				}
-		}
+			}
 	}
 	if(ok == 0)
 	{
@@ -368,11 +398,13 @@ void logout_user(int user_fd)
 		{
 			if(users[i].logged == 1)
 			{
+				pthread_mutex_lock(&lock);
 				users[i].logged = 0;
 				users[i].user_fd = 0;
 				ok = 1;
 				printf("[server][%d][%ld] User logged out\n", user_fd, pthread_self());
 				strcat(RESPONSE, MSG_LOGGED_OUT);
+				pthread_mutex_unlock(&lock);
 			}
 		}
 	}
@@ -391,10 +423,12 @@ void delete_user(int user_fd)
 		{
 			if(users[i].logged == 1)
 			{
+				pthread_mutex_lock(&lock);
 				users[i].logged = 0;
 				ok = 1;
 				index = i;
 				strcat(RESPONSE, MSG_DELETED);
+				pthread_mutex_unlock(&lock);
 			}
 		}
 	}
@@ -429,7 +463,7 @@ void delete_user(int user_fd)
 
 void send_message(int user_fd, char username[40], char MESSAGE[1024])
 {
-	int ok = 0, i, destination_fd, ok_logged = 0;
+	int ok = 0, i, destination_fd, ok_logged = 0, index_sender;
 	char sender[40], message[1024];
 	bzero(sender, 40);
 	for(i = 1; i <= user_count && !ok_logged; i++)
@@ -439,6 +473,7 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 			if(users[i].logged == 1)
 			{
 				ok_logged = 1;
+				index_sender = i;
 			    strcat(sender, users[i].username);
 			}
 		}
@@ -466,6 +501,8 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 				else
 					sprintf(path_history_with, "%s%s", username, sender);
 
+				pthread_mutex_lock(&lock);
+
 				file_path_history_with = fopen(path_history_with, "a");
 			
 				time_t message_time_date;
@@ -482,15 +519,38 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 				time[strlen(time) - 1] = '\0';
 
 				printf("[server][%d][%ld][%s]from %d to %d message %s\n", user_fd, pthread_self(), time, user_fd, destination_fd, MESSAGE);
+				
+
+				int ID = users[index_sender].message_id * f_zero(users[index_sender].user_fd) + users[index_sender].user_fd;
+				users[index_sender].message_id++;
+
 				bzero(message, 1024);
-				sprintf(message,"\e[47m[%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m", sender, hour, minute, second, MESSAGE);
-				fprintf(file_path_history_with, "[%s][%d:%d:%d]%s\n", sender, hour, minute, second, MESSAGE);
-				strcat(RESPONSE, MSG_SENT);
+				sprintf(message,"\e[45m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m", ID, sender, hour, minute, second, MESSAGE);
+				
+				fprintf(file_path_history_with, "\n[%d][%s][%d:%d:%d]%s", ID, sender, hour, minute, second, MESSAGE);
+				
+				strcat(RESPONSE, "->");
+				strcat(RESPONSE, message);
+				
 				fclose(file_path_history_with);
 				
+				pthread_mutex_unlock(&lock);
+
 				if(users[i - 1].logged == 1)
 				{
 					write(destination_fd, message, strlen(message));
+				}
+				else
+				{
+					char path_q[80];
+					bzero(path_q, 80);
+					FILE* file_path_q;
+					sprintf(path_q, "q%s", username);
+					pthread_mutex_lock(&lock);
+					file_path_q = fopen(path_q, "a");
+					fprintf(file_path_q, "\n[%d][%s][%d:%d:%d]%s", ID, sender, hour, minute, second, MESSAGE);
+					fclose(file_path_q);
+					pthread_mutex_unlock(&lock);
 				}
 			}
 			else
@@ -551,6 +611,7 @@ void history_with(int user_fd, char username[40])
 				else
 					sprintf(path_history_with, "%s%s", username, sender);
 				printf("[server]%s", path_history_with);
+				pthread_mutex_lock(&lock);
 				if((file_path_history_with = fopen(path_history_with, "r")) != NULL)
 				{
 					char message[1024];
@@ -559,6 +620,7 @@ void history_with(int user_fd, char username[40])
 						write(user_fd, message, strlen(message));
 					}
 					fclose(file_path_history_with);
+					pthread_mutex_unlock(&lock);
 				}
 				else
 				{
@@ -602,4 +664,15 @@ void signal_handle(int sgn)
 		delete_user(users[i].user_fd);
 	}
 	exit(0);
+}
+
+int f_zero(int x)
+{
+	int z = 1;
+	while(x)
+	{
+		x/=10;
+		z*=10;
+	}
+	return z;
 }

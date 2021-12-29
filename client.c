@@ -124,7 +124,7 @@ int main (int argc, char *argv[])
 						if(bytes > 1)
 						{
 							printf("\e[1;97m%s\e[0m", RESPONSE);
-							
+
 							if(strstr(RESPONSE, MSG_USER_LOGGED_IN) - RESPONSE == 0)
 							{
 								logged = 1;
@@ -135,20 +135,25 @@ int main (int argc, char *argv[])
 							{
 								logged = 0;
 							}
-							if(logged == 0)
-							{
-								printf ("\n\e[1;95m>\e[0m   ");
-							}
-							else
-							{
-								printf("\n[\e[0;92m%s\e[0m]\e[1;95m>\e[0m   ", username);
-							}
-						
-							fflush(stdout);
+						}
+						else
+						{
+							exit(0);
 						}
 						if(RESPONSE[bytes] == '\0')
 							break;
 					} while (bytes > 1);
+					
+					if(logged == 0)
+					{
+						printf ("\n\e[1;95m>\e[0m   ");
+					}
+					else
+					{
+						printf("\n[\e[0;92m%s\e[0m]\e[1;95m>\e[0m   ", username);
+					}
+				
+					fflush(stdout);
 				}
 			}
 		}
