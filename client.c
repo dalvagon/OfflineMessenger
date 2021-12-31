@@ -132,34 +132,26 @@ int main (int argc, char *argv[])
 				}
 				else
 				{
-					do
+					int len;
+					read(sd, &len, sizeof(int));
+					while(len > 0)
 					{
-						bytes = read(sd, RESPONSE, 1024);
-						if(bytes > 1)
+						bytes = read(sd, RESPONSE, sizeof(RESPONSE));
+						len = len - bytes;
+						printf("\e[1;97m %s\e[0m", RESPONSE);
+						fflush(stdout);
+						if(strstr(RESPONSE, MSG_USER_LOGGED_IN) - RESPONSE == 0)
 						{
-							printf("\e[1;97m%s\e[0m", RESPONSE);
-							fflush(stdout);
-							if(strstr(RESPONSE, MSG_USER_LOGGED_IN) - RESPONSE == 0)
-							{
-								logged = 1;
-								bzero(username, 40);
-								strcat(username, RESPONSE + 1 + strlen(MSG_USER_LOGGED_IN));
-							}
-							if(strcmp(RESPONSE, MSG_LOGGED_OUT) == 0 || strcmp(RESPONSE, MSG_DELETED) == 0)
-							{
-								logged = 0;
-							}
+							logged = 1;
+							bzero(username, 40);
+							strcat(username, RESPONSE + 1 + strlen(MSG_USER_LOGGED_IN));
 						}
-						else
+						if(strcmp(RESPONSE, MSG_LOGGED_OUT) == 0 || strcmp(RESPONSE, MSG_DELETED) == 0)
 						{
-							continue;
+							logged = 0;
 						}
-						if(RESPONSE[bytes] == '\0')
-						{
-							break;
-						}
-					} while (bytes > 1);
-
+					}
+					
 
 					if(logged == 0)
 					{
