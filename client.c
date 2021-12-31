@@ -115,6 +115,20 @@ int main (int argc, char *argv[])
 							return errno;
 						}
 					}
+					else
+					{
+
+						if(logged == 0)
+						{
+							printf ("\e[1;95m>\e[0m   ");
+						}
+						else
+						{
+							printf("[\e[0;92m%s\e[0m]\e[1;95m>\e[0m   ", username);
+						}
+						fflush(stdout);
+					}
+
 				}
 				else
 				{
@@ -124,7 +138,7 @@ int main (int argc, char *argv[])
 						if(bytes > 1)
 						{
 							printf("\e[1;97m%s\e[0m", RESPONSE);
-
+							fflush(stdout);
 							if(strstr(RESPONSE, MSG_USER_LOGGED_IN) - RESPONSE == 0)
 							{
 								logged = 1;
@@ -138,12 +152,15 @@ int main (int argc, char *argv[])
 						}
 						else
 						{
-							exit(0);
+							continue;
 						}
 						if(RESPONSE[bytes] == '\0')
+						{
 							break;
+						}
 					} while (bytes > 1);
-					
+
+
 					if(logged == 0)
 					{
 						printf ("\n\e[1;95m>\e[0m   ");
@@ -152,7 +169,6 @@ int main (int argc, char *argv[])
 					{
 						printf("\n[\e[0;92m%s\e[0m]\e[1;95m>\e[0m   ", username);
 					}
-				
 					fflush(stdout);
 				}
 			}
