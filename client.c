@@ -134,11 +134,12 @@ int main (int argc, char *argv[])
 				{
 					int len;
 					read(sd, &len, sizeof(int));
+					printf("[client]%d\n", len);
 					while(len > 0)
 					{
 						bytes = read(sd, RESPONSE, sizeof(RESPONSE));
 						len = len - bytes;
-						printf("\e[1;97m %s\e[0m", RESPONSE);
+						printf("\e[1;97m%s\e[0m", RESPONSE);
 						fflush(stdout);
 						if(strstr(RESPONSE, MSG_USER_LOGGED_IN) - RESPONSE == 0)
 						{

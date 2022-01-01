@@ -120,9 +120,7 @@ static void* treat(void* arg)
 	{
 		if(!handle_command(user_fd))
 		{
-			logout_user(user_fd);
 			close(user_fd);
-			printf ("[server][%d][%ld] Client with file decriptor %d disconnected.\n", user_fd, pthread_self(), user_fd);
 			break;
 		}
 	}
@@ -135,7 +133,8 @@ int handle_command(int user_fd)
 	bzero(MESSAGE, 1024);
 	if((bytes = read(user_fd, MESSAGE, sizeof(MESSAGE))) <= 0) 
 	{
-		perror("Error at read from client \n");
+		perror("[server]Error at read from client\n");
+		return 0;
 	}
 	MESSAGE[bytes] = '\0';
 
@@ -146,8 +145,9 @@ int handle_command(int user_fd)
 		i--;
 	}
 
+	
 	printf("[server][%d][%ld] Message received : %s\n", user_fd, pthread_self(), MESSAGE);
-
+	
 	if((strcmp(MESSAGE, "help") == 0) && strlen(MESSAGE) == 4)
 	{
 		send_help(user_fd);
@@ -210,7 +210,6 @@ int handle_command(int user_fd)
 		if((write(user_fd, MSG_BAD_COMMAND, strlen(MSG_BAD_COMMAND)) <= 0))
 		{
 			perror("Error at write\n");
-			return 0;
 		}
 	}
 	return 1;
@@ -377,15 +376,32 @@ void login_user(int user_fd, char username[1024])
 					{
 						if((file_path_q = fopen(path_q, "r")) != NULL)
 						{
-							sprintf(RESPONSE, "%s \e[0;92m%s\e[1;97m", MSG_USER_LOGGED_IN, users[i].username);
+							int len = 0;
 
-							int len = strlen(MSG_USER_ALREADY_LOGGED_IN) + strlen(MSG_NEW_MSG) + 1;
+							sprintf(RESPONSE, "%s \e[0;92m%s\e[1;97m", MSG_USER_LOGGED_IN, users[i].username);
+							len = strlen(RESPONSE);
+							
+							if((write(user_fd, &len, sizeof(int)) <= 0))
+							{
+								perror("Error at write\n");
+							}
+
+							if((write(user_fd, RESPONSE, strlen(RESPONSE)) <= 0))
+							{
+								perror("Error at write\n");			
+							}
+
+							len = 0;
 
 							while(fgets(message, sizeof(message), file_path_q) != NULL)
 							{
 								len+= strlen(message);
 							}
-							
+							fclose(file_path_q);
+
+							bzero(RESPONSE, 1024);
+							strcat(RESPONSE, MSG_NEW_MSG);
+							len+= strlen(MSG_NEW_MSG);
 
 							if((write(user_fd, &len, sizeof(int)) <= 0))
 							{
@@ -396,12 +412,7 @@ void login_user(int user_fd, char username[1024])
 							{
 								perror("Error at write\n");			
 							}
-							sprintf(RESPONSE, "\n%s", MSG_NEW_MSG);
-
-							if((write(user_fd, RESPONSE, strlen(RESPONSE)) <= 0))
-							{
-								perror("Error at write\n");			
-							}
+							file_path_q = fopen(path_q, "r");
 
 							while(fgets(message, sizeof(message), file_path_q) != NULL)
 							{
@@ -681,11 +692,11 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 				users[index_sender].message_id++;
 
 				bzero(message, 1024);
-				sprintf(message,"\e[45m[%d][%s][%d:%d:%d]\e[0m   \e[1;96m%s\e[0m", ID, sender, hour, minute, second, MESSAGE);
+				sprintf(message,"   \e[45m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m", ID, sender, hour, minute, second, MESSAGE);
 				message[strlen(message)] = '\0';
-				fprintf(file_path_history_with, "\e[1;97m\e[45m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m\n", ID, sender, hour, minute, second, MESSAGE);
+				fprintf(file_path_history_with, "   \e[1;97m\e[45m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m\n", ID, sender, hour, minute, second, MESSAGE);
 				
-				strcat(RESPONSE, "   ->");
+				strcat(RESPONSE, " ->");
 				strcat(RESPONSE, message);
 				
 				int len = strlen(RESPONSE);
@@ -728,7 +739,7 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 					{
 						perror("[server]Error at fopen()\n");
 					}
-					fprintf(file_path_q, "\e[1;97m\e[45m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m\n", ID, sender, hour, minute, second, MESSAGE);
+					fprintf(file_path_q, "   \e[1;97m\e[45m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m\n", ID, sender, hour, minute, second, MESSAGE);
 					fclose(file_path_q);
 					pthread_mutex_unlock(&lock);
 				}
@@ -834,7 +845,7 @@ void history_with(int user_fd, char username[40])
 					while(fgets(message, sizeof(message), file_path_history_with) != NULL)
 					{
 						write(user_fd, message, strlen(message));
-						printf("[server]%s[%d]\n", message, len);
+						printf("[server]%s[%ld]\n", message, strlen(message));
 					}
 					fclose(file_path_history_with);
 				}
@@ -880,12 +891,12 @@ void history_with(int user_fd, char username[40])
 	}
 	else
 	{
-		int len = strlen(MSG_NO_HISTORY);
+		int len = strlen(MSG_NOT_LOGGED);
 		if((write(user_fd, &len, sizeof(int)) <= 0))
 		{
 			perror("Error at write\n");
 		}
-		if((write(user_fd, MSG_NO_HISTORY, strlen(MSG_NO_HISTORY)) <= 0))
+		if((write(user_fd, MSG_NOT_LOGGED, strlen(MSG_NOT_LOGGED)) <= 0))
 		{
 			perror("Error at write\n");
 		}
