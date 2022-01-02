@@ -137,7 +137,16 @@ int main (int argc, char *argv[])
 					printf("[client]%d\n", len);
 					while(len > 0)
 					{
-						bytes = read(sd, RESPONSE, sizeof(RESPONSE));
+						if(len > 1024)
+						{
+							bytes = read(sd, RESPONSE, sizeof(RESPONSE));
+							RESPONSE[bytes] = '\0';
+						}
+						else
+						{
+							bytes = read(sd, RESPONSE, len);
+							RESPONSE[bytes] = '\0';
+						}
 						len = len - bytes;
 						printf("\e[1;97m%s\e[0m", RESPONSE);
 						fflush(stdout);

@@ -400,8 +400,8 @@ void login_user(int user_fd, char username[1024])
 							fclose(file_path_q);
 
 							bzero(RESPONSE, 1024);
-							strcat(RESPONSE, MSG_NEW_MSG);
-							len+= strlen(MSG_NEW_MSG);
+							sprintf(RESPONSE, "%s\n", MSG_NEW_MSG);
+							len+= strlen(RESPONSE);
 
 							if((write(user_fd, &len, sizeof(int)) <= 0))
 							{
@@ -416,7 +416,7 @@ void login_user(int user_fd, char username[1024])
 
 							while(fgets(message, sizeof(message), file_path_q) != NULL)
 							{
-								printf("[server]queue message: %s\n", message);
+								printf("[server][%ld]queue message: %s\n", strlen(message), message);
 								if((write(user_fd, message, strlen(message)) <= 0))
 								{
 									perror("Error at write\n");					
