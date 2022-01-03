@@ -60,7 +60,7 @@ void logout_user(int user_fd); // utlizatorul curent este delogat
 void delete_user(int user_fd); // utilizatorul curent este este sters de pe server
 void send_message(int user_fd, char username[40], char MESSAGE[1024]);
 void history_with(int user_fd, char username[40]);
-
+void reply(int user_fd, char id_message[1024], char MESSAGE[512]);
 
 int main ()
 {	
@@ -70,7 +70,7 @@ int main ()
 		perror ("[server] Error at socket().\n");
 		return errno;
 	}
-	setsockopt(sd, SOL_SOCKET, SO_REUSEADDR,&optval,sizeof(optval));
+	setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 	bzero (&server, sizeof (server));
 	server.sin_family = AF_INET;
 	server.sin_addr.s_addr = htonl (INADDR_ANY);
@@ -107,7 +107,7 @@ int main ()
 		if(pthread_create(&user_tid[tid_count++], NULL, &treat, &client) != 0)
 		{
 			perror("[server] Error ar pthread_create().\n");
-			continue;
+			break;
 		}		
 	}
 }			
@@ -120,6 +120,14 @@ static void* treat(void* arg)
 	{
 		if(!handle_command(user_fd))
 		{
+			for(int i = 0; i <= user_count; i++)
+			{
+				if(users[i].user_fd == user_fd)
+				{
+					users[i].logged = 0;
+					break;
+				}
+			}
 			close(user_fd);
 			break;
 		}
@@ -145,7 +153,6 @@ int handle_command(int user_fd)
 		i--;
 	}
 
-	
 	printf("[server][%d][%ld] Message received : %s\n", user_fd, pthread_self(), MESSAGE);
 	
 	if((strcmp(MESSAGE, "help") == 0) && strlen(MESSAGE) == 4)
@@ -181,7 +188,6 @@ int handle_command(int user_fd)
 	if(strstr(MESSAGE, "send to ") - MESSAGE == 0)
 	{
 		char username[40];
-		if(strlen(MESSAGE ))
 		strcpy(username, MESSAGE + 8);
 		int i = 0;
 		while(username[i] != ' ' && username[i] != '\0')
@@ -199,6 +205,19 @@ int handle_command(int user_fd)
 		strcat(username, MESSAGE + 13);
 		printf("[server]%s\n", username);
 		history_with(user_fd, username);
+	}
+	else
+	if(strstr(MESSAGE, "reply ") - MESSAGE == 0)
+	{
+		char id_message[40];
+		strcpy(id_message, MESSAGE + 6);
+		int i = 0;
+		while(id_message[i] != ' ' && id_message[i] != '\0')
+		{
+			i++;
+		}
+		strcpy(id_message + i, "\0");
+		reply(user_fd, id_message, MESSAGE + 6 + i);
 	}
 	else
 	{
@@ -687,17 +706,18 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 
 				printf("[server][%d][%ld]from %d to %d message %s\n", user_fd, pthread_self(), user_fd, destination_fd, MESSAGE);
 				
-
-				int ID = users[index_sender].message_id * f_zero(users[index_sender].user_fd) + users[index_sender].user_fd;
 				users[index_sender].message_id++;
+				int ID = users[index_sender].message_id * f_zero(users[index_sender].user_fd) * 10 + users[index_sender].user_fd;
+				
 
 				bzero(message, 1024);
-				sprintf(message,"   \e[45m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m", ID, sender, hour, minute, second, MESSAGE);
+				sprintf(message,"\e[45m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m", ID, sender, hour, minute, second, MESSAGE);
 				message[strlen(message)] = '\0';
-				fprintf(file_path_history_with, "   \e[1;97m\e[45m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m\n", ID, sender, hour, minute, second, MESSAGE);
+				fprintf(file_path_history_with, "     \e[1;97m\e[45m[%d][%s][%d:%d:%d]\e[0m\e[1;96m%s\e[0m\n", ID, sender, hour, minute, second, MESSAGE);
 				
-				strcat(RESPONSE, " ->");
-				strcat(RESPONSE, message);
+
+				sprintf(RESPONSE,"     \e[44m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m", ID, sender, hour, minute, second, MESSAGE);
+				message[strlen(RESPONSE)] = '\0';
 				
 				int len = strlen(RESPONSE);
 				if((write(user_fd, &len, sizeof(int)) <= 0))
@@ -903,7 +923,83 @@ void history_with(int user_fd, char username[40])
 	}
 }
 
-char * conv_addr (struct sockaddr_in address)
+void reply(int user_fd, char id_message[1024], char MESSAGE[512])
+{
+	int message_id;
+	int to_fd = 0, p = 1;
+	char to_username[40], username[40], message[512], message_to_send[1024];
+	bzero(to_username, 40);
+	bzero(username, 40);
+	bzero(message_to_send, 1024);
+	message_id = atoi(id_message);
+	while(message_id % 10 != 0)
+	{
+		to_fd = to_fd * p + message_id % 10;
+		p*= 10;
+		message_id/=10;
+	}
+
+	printf("[server]Message id [%s] to user_fd %d\n", id_message, to_fd);
+
+
+
+	if(strlen(to_username) == 0)
+	{
+		for(int i = 20 + strlen(id_message); i < strlen(message) && message[i] != ']'; i++)
+		{ 
+			to_username[i - (20 + strlen(id_message))] = message[i];
+		}
+	}
+
+	char path_history_with[100];
+	FILE* file_path_history_with;
+	int ok = 0;
+	if(strcmp(to_username, username) < 0)
+		sprintf(path_history_with, "%s%s.txt", to_username, username);
+	else
+		sprintf(path_history_with, "%s%s.txt", username, to_username);
+
+	if((file_path_history_with = fopen(path_history_with, "r")) != NULL)
+	{
+		while(fgets(message, sizeof(message), file_path_history_with) != NULL)
+		{
+			int i;
+			ok = 1;
+			for(i = 0; i < strlen(id_message) && ok; i++)
+			{
+				printf("[server][%c][%c]\n", id_message[i], message[i + 18]);
+				if(id_message[i] != message[i + 18])
+				{
+					ok = 0;
+				}
+			}
+			if(ok == 1)
+			{
+				printf("[server1]%s\n", message + 5);
+
+				strcat(message_to_send, message + 5);
+				message_to_send[strlen(message_to_send) - 1] = '\0';
+				sprintf(message_to_send + strlen(message_to_send), "\e[1;96m <-%s\e[0m", MESSAGE);
+				printf("[server2]%s\n", message_to_send);
+				send_message(user_fd, to_username, message_to_send);
+				break;
+			}
+		}
+		fclose(file_path_history_with);
+	}
+	else
+	{
+		perror("Error at fopen()");
+	}
+
+	if(ok == 0)
+	{
+		send_message(user_fd, to_username, "Can not reply");
+	}
+
+}
+
+char* conv_addr (struct sockaddr_in address)
 {
 	static char str[25];
 	char port[7];

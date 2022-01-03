@@ -75,11 +75,11 @@ int main (int argc, char *argv[])
 
 	if(logged == 0)
 	{
-		printf ("\n\e[1;95m>\e[0m   ");
+		printf ("\n\e[1;95m>\e[0m ");
 	}
 	else
 	{
-		printf("\n\e[42m[%s]\e[0;90m>\e[0m   ", username);
+		printf("\n\e[42m[%s]\e[0;90m>\e[0m ", username);
 	}
 	fflush (stdout);
 
@@ -117,14 +117,13 @@ int main (int argc, char *argv[])
 					}
 					else
 					{
-
 						if(logged == 0)
 						{
-							printf ("\e[1;95m>\e[0m   ");
+							printf ("\e[1;95m>\e[0m ");
 						}
 						else
 						{
-							printf("[\e[0;92m%s\e[0m]\e[1;95m>\e[0m   ", username);
+							printf("[\e[0;92m%s\e[0m]\e[1;95m>\e[0m ", username);
 						}
 						fflush(stdout);
 					}
@@ -133,8 +132,11 @@ int main (int argc, char *argv[])
 				else
 				{
 					int len;
-					read(sd, &len, sizeof(int));
-					printf("[client]%d\n", len);
+					if(read(sd, &len, sizeof(int)) <= 0)
+					{
+						exit(0);
+					}
+					//printf("[client]%d\n", len);
 					while(len > 0)
 					{
 						if(len > 1024)
@@ -165,11 +167,11 @@ int main (int argc, char *argv[])
 
 					if(logged == 0)
 					{
-						printf ("\n\e[1;95m>\e[0m   ");
+						printf ("\n\e[1;95m>\e[0m ");
 					}
 					else
 					{
-						printf("\n[\e[0;92m%s\e[0m]\e[1;95m>\e[0m   ", username);
+						printf("\n[\e[0;92m%s\e[0m]\e[1;95m>\e[0m ", username);
 					}
 					fflush(stdout);
 				}
