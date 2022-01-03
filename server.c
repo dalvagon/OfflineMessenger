@@ -943,11 +943,15 @@ void reply(int user_fd, char id_message[1024], char MESSAGE[512])
 
 
 
-	if(strlen(to_username) == 0)
+	for(int i = 1; i <= user_count; i++)
 	{
-		for(int i = 20 + strlen(id_message); i < strlen(message) && message[i] != ']'; i++)
-		{ 
-			to_username[i - (20 + strlen(id_message))] = message[i];
+		if(users[i].user_fd == to_fd)
+		{
+			strcat(to_username, users[i].username);
+		}
+		if(users[i].user_fd == user_fd)
+		{
+			strcat(username, users[i].username);
 		}
 	}
 

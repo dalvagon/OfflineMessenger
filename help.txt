@@ -1,7 +1,8 @@
-register [username]                - registers user [username]
-users                              - displays existing users 
-login                              - login as [username]
-logout                             - current user logs out
-delete me                          - deletes current user
-send to [username][message]        - send a [message] to [username]
-history wtith [username]           - displays the message history with [username] 
+register [username]             - registers user [username]
+users                           - displays existing users 
+login                           - login as [username]
+logout                          - current user logs out
+delete me                       - deletes current user
+send to [username][message]     - send a [message] to [username]
+history wtith [username]        - displays the message history with [username] 
+reply [message_id]              - send a reply message
