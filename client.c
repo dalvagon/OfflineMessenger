@@ -46,7 +46,7 @@ int main (int argc, char *argv[])
 	else
 	{
 		FD_ZERO (&actfds);		
-		FD_SET (sd, &actfds);		
+		FD_SET (sd, &actfds); // pun descriptorul de socket in multimea descriptorilor activi	
 
 		tv.tv_sec = 1;		
 		tv.tv_usec = 0;
@@ -66,14 +66,14 @@ int main (int argc, char *argv[])
 	}
 
 	bzero (RESPONSE, 1024);
-	bytes = read (sd, RESPONSE, sizeof(RESPONSE));
+	bytes = read (sd, RESPONSE, sizeof(RESPONSE)); // citesc mesajul de welcome
 	RESPONSE[bytes] = '\0';
 	printf ("[client]%s\n", RESPONSE);
 
 	bzero(username, 40);
 
 
-	if(logged == 0)
+	if(logged == 0) 
 	{
 		printf ("\n\e[1;95m>\e[0m ");
 	}
@@ -84,14 +84,14 @@ int main (int argc, char *argv[])
 	fflush (stdout);
 
 
-	FD_SET(0, &actfds);
+	FD_SET(0, &actfds); // pun stdin in multimea descriptorilor activi
 
 	while(1)
 	{
 		bzero (MESSAGE, 1024);
 		bzero (RESPONSE, 1024);
 
-		bcopy ((char *) &actfds, (char *) &readfds, sizeof (readfds));
+		bcopy ((char *) &actfds, (char *) &readfds, sizeof (readfds)); // pun descriptorii activi in multimea descriptorilor de citire
 
         if (select (nfds+1, &readfds, NULL, NULL, &tv) < 0)
 		{
@@ -105,11 +105,11 @@ int main (int argc, char *argv[])
 			{
 				if(fd == 0)
 				{
-					bytes = read (0, MESSAGE, sizeof(MESSAGE));
+					bytes = read (0, MESSAGE, sizeof(MESSAGE)); // citesc de la tastatura
 					if(bytes > 1)
 					{
 						MESSAGE[bytes - 1] = '\0';
-						if (write (sd, MESSAGE, strlen(MESSAGE)) <= 0)
+						if (write (sd, MESSAGE, strlen(MESSAGE)) <= 0) 
 						{
 							perror ("[client]Error at write() to server.\n");
 							return errno;
@@ -149,9 +149,11 @@ int main (int argc, char *argv[])
 							bytes = read(sd, RESPONSE, len);
 							RESPONSE[bytes] = '\0';
 						}
+						
 						len = len - bytes;
 						printf("\e[1;97m%s\e[0m", RESPONSE);
 						fflush(stdout);
+
 						if(strstr(RESPONSE, MSG_USER_LOGGED_IN) - RESPONSE == 0)
 						{
 							logged = 1;

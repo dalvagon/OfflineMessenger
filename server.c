@@ -31,36 +31,42 @@
 #define MSG_SELF_MESSAGE "   You can't send a message to yourself"
 #define MSG_NO_HISTORY "   You don't have a conversation history with this user"
 #define MSG_SELF_HISTORY "   You don't have a conversation history with this yourself"
-#define MSG_NEW_MSG "   You have new messages:"
+#define MSG_NEW_MSG "You have new messages:"
 
 extern int errno;	
 
 struct user
 {
 	char username[40];
-	int user_fd, logged, user_tid, message_id;
+	int user_fd, logged, user_tid, message_id, show_time;
 }users[100];
+
+
 char MESSAGE[1024], RESPONSE[1024];
 struct sockaddr_in server, from;				
 int sd, client,  optval = 1, len, bytes, user_count, tid_count = 0;	
+
+
 FILE* file_help;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_t user_tid[100];
 
-char * conv_addr (struct sockaddr_in address);
-void signal_handle(int sgn);
+char * conv_addr (struct sockaddr_in address); // conversteste adresa in sir de caracterre
+void signal_handle(int sgn); // daca se apasa CTRL+C
 static void* treat(void* arg); //functia pentru thread
-int f_zero(int x);
+int f_zero(int x); // numarul de zerouri
 int handle_command(int user_fd); // se ocupa de comanda primita
 void send_help(int user_fd); // trimite o lista care contine comenzile disponibile utilizatorului
 void register_user(int user_fd, char usersame[1024]); // este inregistrat un utilizator
 void display_users(int user_fd); // lista utlizatorilor inregistarti
-void login_user(int user_fd,char username[1024]); // este logat un utliziator 
+void login_user(int user_fd, char username[1024]); // este logat un utliziator 
 void logout_user(int user_fd); // utlizatorul curent este delogat
 void delete_user(int user_fd); // utilizatorul curent este este sters de pe server
-void send_message(int user_fd, char username[40], char MESSAGE[1024]);
-void history_with(int user_fd, char username[40]);
+void send_message(int user_fd, char username[40], char MESSAGE[1024]); // trimite un mesaj unui utilizator
+void history_with(int user_fd, char username[40]); // istroicul cu un anumot utilizator
 void reply(int user_fd, char id_message[1024], char MESSAGE[512]);
+void show_time_for_user(int user_fd); // afiseaza timpul trimiterii mesajului
+void broadcast(int user_fd, char MESSAGE[1024]); // trimite un mesaj tuturor utilizatorilor
 
 int main ()
 {	
@@ -220,6 +226,16 @@ int handle_command(int user_fd)
 		reply(user_fd, id_message, MESSAGE + 6 + i);
 	}
 	else
+	if(strcmp(MESSAGE, "show time") == 0)
+	{
+		show_time_for_user(user_fd);
+	}
+	else
+	if(strstr(MESSAGE, "send all ") - MESSAGE == 0)
+	{
+		broadcast(user_fd, MESSAGE + 9);
+	}
+	else
 	{
 		int len = strlen(MSG_BAD_COMMAND);
 		if((write(user_fd, &len, sizeof(int)) <= 0))
@@ -314,6 +330,7 @@ void register_user(int user_fd, char username[1024])
 				strcpy(users[user_count].username, username);
 				users[user_count].logged = 0;
 				users[user_count].message_id = 0;
+				users[user_count].show_time = 0;
 				sprintf(RESPONSE, "   User \e[1;91m%s \e[1;97mwas registered!", users[user_count].username);
 				RESPONSE[strlen(RESPONSE)] = '\0';	
 
@@ -646,7 +663,7 @@ void delete_user(int user_fd)
 
 void send_message(int user_fd, char username[40], char MESSAGE[1024])
 {
-	int ok = 0, i, destination_fd, ok_logged = 0, index_sender;
+	int ok = 0, i, destination_fd, ok_logged = 0, index_sender, index_destination;
 	char sender[40], message[1024];
 	bzero(sender, 40);
 	for(i = 1; i <= user_count && !ok_logged; i++)
@@ -670,6 +687,7 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 			{
 				printf("[server]Sending to %s\n", username);
 				destination_fd = users[i].user_fd;
+				index_destination = i;
 				ok = 1;
 			}
 		}
@@ -709,14 +727,28 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 				users[index_sender].message_id++;
 				int ID = users[index_sender].message_id * f_zero(users[index_sender].user_fd) * 10 + users[index_sender].user_fd;
 				
-
 				bzero(message, 1024);
-				sprintf(message,"\e[45m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m", ID, sender, hour, minute, second, MESSAGE);
+
+				if(users[index_destination].show_time == 1)
+				{
+					sprintf(message,"\e[45m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m", ID, sender, hour, minute, second, MESSAGE);
+				}
+				else
+				{
+					sprintf(message,"\e[45m[%d][%s]\e[0m \e[1;96m%s\e[0m", ID, sender, MESSAGE);
+				}
 				message[strlen(message)] = '\0';
+
 				fprintf(file_path_history_with, "     \e[1;97m\e[45m[%d][%s][%d:%d:%d]\e[0m\e[1;96m%s\e[0m\n", ID, sender, hour, minute, second, MESSAGE);
 				
-
-				sprintf(RESPONSE,"     \e[44m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m", ID, sender, hour, minute, second, MESSAGE);
+				if(users[index_sender].show_time == 1)
+				{
+					sprintf(RESPONSE,"     \e[44m[%d][%s][%d:%d:%d]\e[0m \e[1;96m%s\e[0m", ID, sender, hour, minute, second, MESSAGE);
+				}
+				else
+				{
+					sprintf(RESPONSE,"     \e[44m[%d][%s]\e[0m \e[1;96m%s\e[0m", ID, sender, MESSAGE);
+				}
 				message[strlen(RESPONSE)] = '\0';
 				
 				int len = strlen(RESPONSE);
@@ -733,7 +765,7 @@ void send_message(int user_fd, char username[40], char MESSAGE[1024])
 				
 				pthread_mutex_unlock(&lock);
 
-				if(users[i - 1].logged == 1)
+				if(users[index_destination].logged == 1)
 				{
 					int len = strlen(message);
 					pthread_mutex_lock(&lock);
@@ -1035,3 +1067,43 @@ int f_zero(int x)
 	}
 	return z;
 }
+
+void show_time_for_user(int user_fd)
+{
+	for(int i = 1; i <= user_count; i++)
+	{
+		if(users[i].user_fd == user_fd)
+		{
+			if(users[i].show_time == 0)
+			{
+				users[i].show_time = 1;
+				sprintf(RESPONSE, "   Time of message will be shown.");
+			}
+			else
+			{
+				users[i].show_time = 0;
+				sprintf(RESPONSE, "   Time of message will not be shown.");
+			}
+			int len = strlen(RESPONSE);
+			if((write(user_fd, &len, sizeof(int)) <= 0))
+			{
+				perror("Error at write\n");
+			}
+			if((write(user_fd, RESPONSE, strlen(RESPONSE)) <= 0))
+			{
+				perror("Error at write\n");
+			}
+			break;
+		}
+	}
+}
+
+void broadcast(int user_fd, char MESSAGE[1024])
+{
+	for(int i = 1; i <= user_count; i++)
+	{
+		if(users[i].user_fd != user_fd)
+			send_message(user_fd, users[i].username, MESSAGE);
+	}
+}
+
